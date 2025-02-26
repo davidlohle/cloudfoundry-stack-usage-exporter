@@ -1,0 +1,12 @@
+---
+applications:
+- name: stack-usage-prometheus-exporter
+  memory: 512M
+  buildpacks:
+  - python_buildpack
+  stack: cflinuxfs4
+  env:
+    CF_USERNAME: ((cf_username))
+    CF_PASSWORD: ((cf_password))
+    CF_SYS_HOSTNAME: ((cf_sys_hostname))
+    SCRAPE_INTERVAL: 300
