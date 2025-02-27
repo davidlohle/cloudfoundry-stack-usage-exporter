@@ -11,9 +11,9 @@ It's meant to be run as a cf app, but can easily run wherever you've got Python.
 
 Take a look at `manifest.yml`: you'll need three bits of information:
 
-`CF_SYS_HOST` is the hostname prefix for your CF's system domain (i.e. `sys.cloud.seventhprotocol.com`) 
-`CF_USERNAME` is an UAA account that has at minimum read-only permissions to all of the `/v3/apps` endpoint 
-`CF_PASSWORD` is the password to the account above.
+`CF_SYS_HOST` is the hostname prefix for your CF's system domain (i.e. `sys.cloud.seventhprotocol.com`)  
+`CF_USERNAME` is an UAA account that has at minimum read-only permissions to all of the `/v3/apps` endpoint  
+`CF_PASSWORD` is the password to the account above.  
 
 Optionally, you can also configure `SCRAPE_INTERVAL` which dictates how often
 the background task of refreshing the metric occurs. By default it's 300
