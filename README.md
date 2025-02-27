@@ -40,3 +40,24 @@ pip3 download \
 --dest=vendor \
 --requirement=requirements.txt
 ```
+
+## Adding to Healthwatch
+
+Running a Tanzu Application Service installation, with Healthwatch 2.0? To add
+the scrape job to HW, go to your OpsMan, then the Healthwatch tile. Navigate to
+Prometheus > Additional Scrape Jobs.
+
+Paste the following into the scrape job configuration:
+```
+job_name: 'stack-usage'
+scheme: https
+scrape_interval: 60s
+static_configs:
+- targets: [ 'stack-usage-prometheus-exporter.apps.cloud.seventhprotocol.com' ]
+  labels:
+    env: 'staging'
+```
+
+Replace the `target` with the URL of your exporter instance, and while the label
+isn't required, it's recommended to add your environment name to it (i.e.
+sandbox, staging, production)
