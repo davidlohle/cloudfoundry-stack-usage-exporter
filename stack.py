@@ -3,6 +3,7 @@ from prometheus_client import CollectorRegistry, Gauge, generate_latest
 import time
 import requests
 import os
+import sys
 import concurrent.futures
 import threading
 import logging
@@ -34,6 +35,8 @@ app = Flask(__name__)
 registry = CollectorRegistry()
 logging.getLogger("werkzeug").disabled = True
 
+REQUIRED_ENV_VARS = ["CF_SYS_HOSTNAME", "CF_USERNAME", "CF_PASSWORD"]
+
 CF_SYS_DOMAIN = os.getenv("CF_SYS_HOSTNAME")
 CF_API_URL = f"https://api.{CF_SYS_DOMAIN}"
 CF_UAA_URL = f"https://uaa.{CF_SYS_DOMAIN}"
@@ -44,11 +47,19 @@ CF_USERNAME = os.getenv("CF_USERNAME")
 CF_PASSWORD = os.getenv("CF_PASSWORD")
 
 SCRAPE_INTERVAL = int(os.getenv("SCRAPE_INTERVAL", "300"))
-PORT = os.getenv("PORT")
+PORT = os.getenv("PORT", "8080")
 
 
 stack_gauge = Gauge("cf_stack_count", "Total number of apps using each stack", ["stack"], registry=registry)
 stack_cache = {}
+cache_lock = threading.Lock()
+
+def validate_env_vars():
+    missing_vars = [var for var in REQUIRED_ENV_VARS if not os.getenv(var)]
+    if missing_vars:
+        print(f"Error: Missing required environment variables: {', '.join(missing_vars)}")
+        sys.exit(1)
+
 
 def get_token():
     auth_endpoint = f"{CF_UAA_URL}/oauth/token"
@@ -89,18 +100,34 @@ def generate_stack_metrics():
             retries = 0
 
             while apps_count == 0:
-                if retries > 5:
+                if retries >= 5:
                     print(f"Quitting iteration after 5 attempts to authenticate to UAA.")
                     raise Exception
                 try:
                     apps_count = api_call(apps_endpoint)
                 except requests.exceptions.RequestException as err:
-                    if err.response.status_code == 403 or err.response.status_code == 401:
-                        print(f"Error: {err.response.content}, attempting re-login")
+                    if err.response is None:
+                        print(f"Error while enumerating applications: {err}")
+                        time.sleep(5)
+                        retries += 1
+                        continue
+                    elif err.response.status_code == 403 or err.response.status_code == 401:
+                        print(f"Token not valid, attempting re-login")
                         get_token()
                         time.sleep(5)
                         retries += 1
-                        pass
+                        continue
+                    else:
+                        print(f"Error while enumerating applications: {err}")
+                        time.sleep(5)
+                        retries += 1
+                        continue
+                except Exception as err:
+                        print(f"Error while enumerating applications: {err}")
+                        time.sleep(5)
+                        retries += 1
+                        continue
+                    
 
             apps_count = apps_count["pagination"]["total_pages"]
 
@@ -117,16 +144,23 @@ def generate_stack_metrics():
                     if stack:
                         stack_counts[stack] = stack_counts.get(stack, 0) + 1
             
-            stack_cache = stack_counts
+            with cache_lock:
+                stack_cache = stack_counts
+
         except Exception as err:
             print(f"Error while fetching metrics: {err}")
+            time.sleep(SCRAPE_INTERVAL)
+            continue
         
         print("Successfully scraped CF API")
         time.sleep(SCRAPE_INTERVAL)
 
 @app.route("/metrics")
 def metrics():
-    local_cache = stack_cache
+    local_cache = {}
+
+    with cache_lock:
+        local_cache = stack_cache.copy()
 
     for stack, count in local_cache.items():
         stack_gauge.labels(stack=stack).set(count)
@@ -135,5 +169,6 @@ def metrics():
 
 
 if __name__ == "__main__":
+    validate_env_vars()
     threading.Thread(target=generate_stack_metrics, daemon=True).start()
     app.run(host="0.0.0.0", port=PORT)
