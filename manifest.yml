@@ -10,3 +10,4 @@ applications:
     CF_PASSWORD: ((cf_password))
     CF_SYS_HOSTNAME: ((cf_sys_hostname))
     SCRAPE_INTERVAL: 300
+    LOG_LEVEL: INFO
