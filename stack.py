@@ -1,5 +1,6 @@
 from flask import Flask, Response
 from prometheus_client import CollectorRegistry, Gauge, generate_latest
+from urllib.parse import urlparse
 import time
 import requests
 import os
@@ -21,51 +22,71 @@ for Prometheus to wait for, so we instead serve the latest metrics that have bee
 
 This Flask app needs three environment variables:
 
-CF_SYS_DOMAIN is the sys prefix for whatever CF you'd like to scrape.
+CF_API_URL is the API endpoint for whatever CF you'd like to scrape. (i.e. api.cloud.seventhprotocol.com)
 CF_USERNAME is an account that has permissions to access /v3/apps (admin is a good one)
 CF_PASSWORD is the password to the above account
 
-A fourth optional environment variable is:
+Some optional environment variables are:
 SCRAPE_INTERVAL which dictates how often we hit the CF API for updated metrics in seconds. By default it's 300 seconds (5 minutes)
+LOG_LEVEL which controls verbosity for debugging purposes. By default it's INFO (pretty quiet)
+SKIP_SSL_VERIFY for whether or not to skip SSL validation. By default it's False (validates SSL)
 """
-
-
 
 app = Flask(__name__)
 registry = CollectorRegistry()
 
+# Setup logging, including disabling the wekzeug access logs, as CF already does this for us
 logging.getLogger("werkzeug").disabled = True
-log_level = os.environ.get('LOG_LEVEL', 'INFO').upper()
+log_level = os.getenv('LOG_LEVEL', 'INFO').upper()
 logging.basicConfig(stream=sys.stdout, format='[%(levelname)s] [%(name)s] %(message)s',level=log_level)
 logger = logging.getLogger("StackExporter")
 
-REQUIRED_ENV_VARS = ["CF_SYS_HOSTNAME", "CF_USERNAME", "CF_PASSWORD"]
+# End program if these envvars aren't available, we can't assume them
+REQUIRED_ENV_VARS = ["CF_API_URL", "CF_USERNAME", "CF_PASSWORD"]
 
-CF_SYS_DOMAIN = os.getenv("CF_SYS_HOSTNAME")
-CF_API_URL = f"https://api.{CF_SYS_DOMAIN}"
-CF_UAA_URL = f"https://uaa.{CF_SYS_DOMAIN}"
-
+# We'll get these two dynamically
+CF_UAA_URL = ""
 CF_AUTH_TOKEN = ""
+
+# Various environment variables used throughout the scraper
+CF_API_URL = os.getenv("CF_API_URL")
 CF_USERNAME = os.getenv("CF_USERNAME")
 CF_PASSWORD = os.getenv("CF_PASSWORD")
-
 SCRAPE_INTERVAL = int(os.getenv("SCRAPE_INTERVAL", "300"))
+SKIP_SSL_VALIDATION = os.getenv('SKIP_SSL_VERIFY', False)
 PORT = os.getenv("PORT", "8080")
 
+# Prometheus gauge creation
 stack_gauge = Gauge("cf_stack_count", "Total number of apps using each stack", ["stack"], registry=registry)
+
+# Cached metrics, array of valid stacks, and a mutex to prevent collisions
 stack_cache = {}
 cache_lock = threading.Lock()
-
 valid_stacks = []
 
+
 def validate_env_vars():
+    global CF_API_URL
     missing_vars = [var for var in REQUIRED_ENV_VARS if not os.getenv(var)]
     if missing_vars:
         logger.fatal(f"Error: Missing required environment variables: {', '.join(missing_vars)}")
         sys.exit(1)
 
+    # Check if URL passed includes a https:// or http:// scheme, if not, automatically assume https://
+    if not urlparse(CF_API_URL).scheme:
+        CF_API_URL = f"https://{CF_API_URL}"
+
+def get_uaa_endpoint():
+    global CF_UAA_URL
+    api_info = api_call(CF_API_URL)
+    CF_UAA_URL = api_info["links"]["uaa"]["href"]
 
 def grab_valid_stacks():
+    # This is necessary because people can put whatever they want under 'stack' in their manifest,
+    # and we don't want to mess up the data from people's mistakes.
+    # TODO: Maybe create an 'invalid' metric to tally how many invalid stacks are being requested?
+
+    global valid_stacks
     stacks_endpoint = f"{CF_API_URL}/v3/stacks"
     stack_list = api_call(stacks_endpoint)
 
@@ -77,19 +98,20 @@ def grab_valid_stacks():
 
 
 def get_token():
+    global CF_AUTH_TOKEN
+
     auth_endpoint = f"{CF_UAA_URL}/oauth/token"
     headers = {"Accept": "application/json", 
                "Authorization": "Basic Y2Y6",
                "Content-Type'": "application/x-www-form-urlencoded"
                }
-    global CF_AUTH_TOKEN
 
     response = requests.post(auth_endpoint, data={
         "grant_type": "password",
         "client_id": "cf",
         "username": CF_USERNAME,
         "password": CF_PASSWORD
-    }, headers=headers, verify=False)
+    }, headers=headers, verify=SKIP_SSL_VALIDATION)
 
 
     response.raise_for_status()
@@ -103,7 +125,7 @@ def api_call(url):
     global CF_AUTH_TOKEN
     headers = {"Authorization": f"Bearer {CF_AUTH_TOKEN}"}
     logger.debug(f"Fetching API: {url}")
-    response = requests.get(url, headers=headers, verify=False)
+    response = requests.get(url, headers=headers, verify=SKIP_SSL_VALIDATION)
     response.raise_for_status()
     return response.json()
 
@@ -195,6 +217,7 @@ def metrics():
 
 if __name__ == "__main__":
     validate_env_vars()
+    get_uaa_endpoint()
     get_token()
     grab_valid_stacks()
     threading.Thread(target=generate_stack_metrics, daemon=True).start()
