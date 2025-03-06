@@ -30,6 +30,7 @@ Some optional environment variables are:
 SCRAPE_INTERVAL which dictates how often we hit the CF API for updated metrics in seconds. By default it's 300 seconds (5 minutes)
 LOG_LEVEL which controls verbosity for debugging purposes. By default it's INFO (pretty quiet)
 SKIP_SSL_VERIFY for whether or not to skip SSL validation. By default it's False (validates SSL)
+INCLUDE_INVALID_STACKS to control whether or not we report stacks that are invalid (i.e typos from developers)
 """
 
 app = Flask(__name__)
@@ -53,7 +54,8 @@ CF_API_URL = os.getenv("CF_API_URL")
 CF_USERNAME = os.getenv("CF_USERNAME")
 CF_PASSWORD = os.getenv("CF_PASSWORD")
 SCRAPE_INTERVAL = int(os.getenv("SCRAPE_INTERVAL", "300"))
-SKIP_SSL_VALIDATION = os.getenv('SKIP_SSL_VERIFY', False)
+SKIP_SSL_VALIDATION = os.getenv("SKIP_SSL_VERIFY", False)
+INCLUDE_INVALID_STACKS = os.getenv("INCLUDE_INVALID_STACKS", False)
 PORT = os.getenv("PORT", "8080")
 
 # Prometheus gauge creation
@@ -169,7 +171,7 @@ def generate_stack_metrics():
                         continue
                     
 
-            logger.debug(f"Pagination data: {apps_count["pagination"]}")
+            logger.debug(f"Pagination data: {apps_count['pagination']}")
             apps_count = apps_count["pagination"]["total_pages"]
             logger.debug(f"There are {apps_count} pages to iterate through")
 
@@ -185,7 +187,7 @@ def generate_stack_metrics():
                 for app in response.get("resources", []):
                     stack = app.get("lifecycle", {}).get("data", {}).get("stack")
                     if stack:
-                        if stack in valid_stacks:
+                        if INCLUDE_INVALID_STACKS or stack in valid_stacks:
                             stack_counts[stack] = stack_counts.get(stack, 0) + 1
                         else:
                             logger.debug(f"Discarding {stack} as it's not in list: {valid_stacks}")
@@ -219,6 +221,9 @@ if __name__ == "__main__":
     validate_env_vars()
     get_uaa_endpoint()
     get_token()
-    grab_valid_stacks()
+    if INCLUDE_INVALID_STACKS:
+        logger.info("Including all stacks, including invalid ones as INCLUDE_INVALID_STACKS is set to True")
+    else:
+        grab_valid_stacks()
     threading.Thread(target=generate_stack_metrics, daemon=True).start()
     app.run(host="0.0.0.0", port=PORT)
