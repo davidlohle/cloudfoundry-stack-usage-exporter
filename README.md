@@ -11,20 +11,22 @@ It's meant to be run as a cf app, but can easily run wherever you've got Python.
 
 Take a look at `manifest.yml`: you'll need three bits of information:
 
-`CF_SYS_HOST` is the hostname prefix for your CF's system domain (i.e. `sys.cloud.seventhprotocol.com`)  
+`CF_API_URL` is the full URL for your CF's API (i.e. `https://api.sys.cloud.seventhprotocol.com`)  
 `CF_USERNAME` is an UAA account that has at minimum read-only permissions to all of the `/v3/apps` endpoint  
 `CF_PASSWORD` is the password to the account above.  
 
-Optionally, you can also configure `SCRAPE_INTERVAL` which dictates how often
-the background task of refreshing the metric occurs. By default it's 300
-seconds.
+Optionally, you can also configure:
+`SCRAPE_INTERVAL` which dictates how often the background task of refreshing the metric occurs. By default it's 300 seconds.
+`LOG_LEVEL` which controls verbosity for debugging purposes. By default it's INFO (pretty quiet)
+`SKIP_SSL_VERIFY` for whether or not to skip SSL validation. By default it's False (validates SSL)
+`INCLUDE_INVALID_STACKS` to control whether or not we report stacks that are invalid (i.e typos from developers)
 
 
 An example CF push:
 
 ```
 cf push \
---var cf_sys_hostname=sys.cloud.seventhprotocol.com \
+--var cf_api_url=https://api.sys.cloud.seventhprotocol.com \
 --var cf_username=readonly \
 --var cf_password=deepbluesea
 ```
