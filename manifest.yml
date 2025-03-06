@@ -6,9 +6,10 @@ applications:
   - python_buildpack
   stack: cflinuxfs4
   env:
-    CF_USERNAME: ((cf_username)) # required
-    CF_PASSWORD: ((cf_password)) # required
-    CF_API_URL: ((cf_api_url))   # required
-    SCRAPE_INTERVAL: 300         # optional, 300 default
-    LOG_LEVEL: INFO              # optional, INFO default
-    SKIP_SSL_VERIFY: False       # optional, False default
+    CF_USERNAME: ((cf_username))   # required
+    CF_PASSWORD: ((cf_password))   # required
+    CF_API_URL: ((cf_api_url))     # required
+    SCRAPE_INTERVAL: 300           # optional, 300 default
+    LOG_LEVEL: INFO                # optional, INFO default
+    SKIP_SSL_VERIFY: False         # optional, False default
+    INCLUDE_INVALID_STACKS: False  # optional, False default
