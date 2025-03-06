@@ -36,6 +36,9 @@ INCLUDE_INVALID_STACKS to control whether or not we report stacks that are inval
 app = Flask(__name__)
 registry = CollectorRegistry()
 
+def str2bool(val):
+  return str(val).lower() in ("yes", "true", "t", "1")
+
 # Setup logging, including disabling the wekzeug access logs, as CF already does this for us
 logging.getLogger("werkzeug").disabled = True
 log_level = os.getenv('LOG_LEVEL', 'INFO').upper()
@@ -54,8 +57,8 @@ CF_API_URL = os.getenv("CF_API_URL")
 CF_USERNAME = os.getenv("CF_USERNAME")
 CF_PASSWORD = os.getenv("CF_PASSWORD")
 SCRAPE_INTERVAL = int(os.getenv("SCRAPE_INTERVAL", "300"))
-SKIP_SSL_VALIDATION = os.getenv("SKIP_SSL_VERIFY", False)
-INCLUDE_INVALID_STACKS = os.getenv("INCLUDE_INVALID_STACKS", False)
+SKIP_SSL_VALIDATION = str2bool(os.getenv("SKIP_SSL_VERIFY", False))
+INCLUDE_INVALID_STACKS = str2bool(os.getenv("INCLUDE_INVALID_STACKS", False))
 PORT = os.getenv("PORT", "8080")
 
 # Prometheus gauge creation
